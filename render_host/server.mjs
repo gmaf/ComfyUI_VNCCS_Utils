@@ -98,12 +98,33 @@ function browser() {
     browserPromise = chromium
       .launch({ headless: true, args: ["--enable-unsafe-swiftshader", "--ignore-gpu-blocklist", ...EXTRA_ARGS] })
       .then((b) => {
-        b.on("disconnected", () => { browserPromise = null; });
+        b.on("disconnected", () => { browserPromise = null; rendererPromise = null; });
         return b;
       })
       .catch((e) => { browserPromise = null; throw e; });
   }
   return browserPromise;
+}
+
+// WebGL renderer string (GPU or SwiftShader), measured once per browser.
+let rendererPromise = null;
+function webglRenderer(b) {
+  if (!rendererPromise) {
+    rendererPromise = (async () => {
+      const page = await b.newPage();
+      try {
+        return await page.evaluate(() => {
+          const gl = document.createElement("canvas").getContext("webgl2");
+          if (!gl) return "no WebGL";
+          const ext = gl.getExtension("WEBGL_debug_renderer_info");
+          return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+        });
+      } finally {
+        await page.close().catch(() => {});
+      }
+    })().catch((e) => { rendererPromise = null; throw e; });
+  }
+  return rendererPromise;
 }
 
 // One render at a time: each needs a WebGL context and the CPU rasterizer is the bottleneck.
@@ -164,7 +185,7 @@ createServer(async (req, res) => {
   try {
     if (req.method === "GET" && req.url === "/health") {
       const b = await browser();
-      return send(res, 200, { ok: true, comfy: COMFY, chromium: b.version() });
+      return send(res, 200, { ok: true, comfy: COMFY, chromium: b.version(), webgl: await webglRenderer(b) });
     }
     if (req.method === "POST" && req.url === "/render") {
       const body = await readJson(req);

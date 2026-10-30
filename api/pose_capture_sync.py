@@ -89,7 +89,7 @@ async def render_host_status(request):
 
     try:
         health = await asyncio.get_running_loop().run_in_executor(None, probe)
-        return web.json_response({"configured": True, "ok": bool(health.get("ok")), "chromium": health.get("chromium")})
+        return web.json_response({"configured": True, "ok": bool(health.get("ok")), "chromium": health.get("chromium"), "webgl": health.get("webgl")})
     except Exception as e:
         return web.json_response({"configured": True, "ok": False, "error": str(e)})
 

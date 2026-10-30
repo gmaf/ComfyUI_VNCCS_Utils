@@ -14,4 +14,8 @@ scripts, VNCCS Studio).
 - `GET /vnccs/pose_sync/render_host` on ComfyUI reports whether the host is configured and healthy.
 - `POST /render` with `"dry_run": true` returns the captures in the response instead of uploading them.
 
-WebGL runs on SwiftShader (CPU); 12 captures at 640x1536 take about 2.5 s on DGX Spark.
+WebGL: with `CHROMIUM_ARGS="--use-gl=angle --use-angle=gl-egl"`, `--gpus all`,
+`NVIDIA_DRIVER_CAPABILITIES=all` and the host's `/usr/share/glvnd/egl_vendor.d/10_nvidia.json`
+mounted, Chromium renders on the NVIDIA GPU (EGL); otherwise on SwiftShader (CPU), with the same
+images. 12 captures at 640x1536 on DGX Spark: about 1.7 s on the GPU, 2.4 s on SwiftShader.
+`GET /health` reports the WebGL renderer in use.
