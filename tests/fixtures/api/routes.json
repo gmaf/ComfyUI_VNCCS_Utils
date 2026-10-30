@@ -36,6 +36,7 @@
   ["GET", "/vnccs/pose_library/preview/{name}"],
   ["GET", "/vnccs/pose_library/repositories"],
   ["GET", "/vnccs/pose_library/repositories/progress/{task_id}"],
+  ["GET", "/vnccs/pose_sync/render_host"],
   ["GET", "/vnccs/unicanvas/build_info"],
   ["GET", "/vnccs/unicanvas/documents"],
   ["GET", "/vnccs/unicanvas/documents/{canvas_id}"],

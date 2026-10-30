@@ -74,8 +74,30 @@ async def upload_pose_sync(request):
         return web.json_response({"error": str(exc)}, status=500)
 
 
+async def render_host_status(request):
+    """Whether Pose Studio renders on the server (render_host/server.mjs) or needs a browser tab."""
+    import asyncio
+    import urllib.request
+
+    host = os.environ.get("VNCCS_RENDER_HOST", "").strip().rstrip("/")
+    if not host:
+        return web.json_response({"configured": False, "ok": False})
+
+    def probe():
+        with urllib.request.urlopen(f"{host}/health", timeout=10) as response:
+            return json.loads(response.read().decode("utf-8") or "{}")
+
+    try:
+        health = await asyncio.get_running_loop().run_in_executor(None, probe)
+        return web.json_response({"configured": True, "ok": bool(health.get("ok")), "chromium": health.get("chromium")})
+    except Exception as e:
+        return web.json_response({"configured": True, "ok": False, "error": str(e)})
+
+
 def register_routes(app):
     """Register Pose Studio runtime synchronization routes."""
+    app.router.add_get("/vnccs/pose_sync/render_host", render_host_status)
+    app.router.add_get("/api/vnccs/pose_sync/render_host", render_host_status)
     app.router.add_post("/vnccs/pose_sync/upload_capture", upload_pose_sync)
     app.router.add_post("/api/vnccs/pose_sync/upload_capture", upload_pose_sync)
     app.router.add_post("/vnccs/debug/upload_capture", upload_pose_sync)

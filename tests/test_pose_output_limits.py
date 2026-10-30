@@ -142,6 +142,61 @@ class PoseOutputLimitTests(unittest.TestCase):
             self.assertEqual(payload["node_id"], "91:703")
             self.assertTrue(payload["sync_token"])
 
+    def test_render_host_receives_sync_requests_with_pose_data(self):
+        import http.server
+        import threading
+
+        received = []
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                received.append((self.path, json.loads(self.rfile.read(int(self.headers["Content-Length"])))))
+                body = b'{"ok": true, "ms": 5}'
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *_args):
+                pass
+
+        httpd = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        events = []
+        server = types.SimpleNamespace(PromptServer=types.SimpleNamespace(
+            instance=types.SimpleNamespace(client_id="browser",
+                send_sync=lambda event, payload, sid=None: events.append(event))))
+        node = POSE_STUDIO.VNCCS_PoseStudio()
+        node._wait_for_frontend_sync = lambda *_args, **_kwargs: {"sync_error": "stop here"}
+        pose_data = json.dumps({"poses": [{"prompt": "a"}]})
+        try:
+            with patch.dict(sys.modules, {"server": server}), \
+                    patch.dict("os.environ", {"VNCCS_RENDER_HOST": f"http://127.0.0.1:{httpd.server_port}/"}):
+                with self.assertRaisesRegex(RuntimeError, "stop here"):
+                    node.generate(pose_data, unique_id="12")
+        finally:
+            httpd.shutdown()
+        self.assertEqual(events, [])
+        path, body = received[0]
+        self.assertEqual(path, "/render")
+        self.assertEqual(body["event"], "vnccs_req_pose_sync")
+        self.assertEqual(body["pose_data"], pose_data)
+        self.assertEqual(body["detail"]["node_id"], "12")
+        self.assertTrue(body["detail"]["sync_token"])
+
+    def test_unreachable_render_host_falls_back_to_browser(self):
+        events = []
+        server = types.SimpleNamespace(PromptServer=types.SimpleNamespace(
+            instance=types.SimpleNamespace(client_id="browser",
+                send_sync=lambda event, payload, sid=None: events.append((event, sid)))))
+        node = POSE_STUDIO.VNCCS_PoseStudio()
+        node._wait_for_frontend_sync = lambda *_args, **_kwargs: {"sync_error": "stop here"}
+        with patch.dict(sys.modules, {"server": server}), \
+                patch.dict("os.environ", {"VNCCS_RENDER_HOST": "http://127.0.0.1:9"}):
+            with self.assertRaisesRegex(RuntimeError, "stop here"):
+                node.generate("{}", unique_id="12")
+        self.assertEqual(events, [("vnccs_req_pose_sync", "browser")])
+
     def test_sparse_animation_export_preserves_imported_duration(self):
         fps = POSE_STUDIO._animation_frame_rate({"animation": {"fps": 600 / 7200}})
         self.assertAlmostEqual(600 / fps, 7200)

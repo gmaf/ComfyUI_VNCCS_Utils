@@ -47,9 +47,13 @@ class FakeRequest:
 class FakeRouter:
     def __init__(self):
         self.posts = []
+        self.gets = []
 
     def add_post(self, path, handler):
         self.posts.append((path, handler))
+
+    def add_get(self, path, handler):
+        self.gets.append((path, handler))
 
 
 class PoseSyncTests(unittest.TestCase):
@@ -98,6 +102,11 @@ class PoseSyncTests(unittest.TestCase):
             ["/vnccs/pose_sync/upload_capture", "/api/vnccs/pose_sync/upload_capture", "/vnccs/debug/upload_capture"],
         )
         self.assertTrue(all(handler is POSE_SYNC.upload_pose_sync for _path, handler in app.router.posts))
+        self.assertEqual(
+            app.router.gets,
+            [("/vnccs/pose_sync/render_host", POSE_SYNC.render_host_status),
+             ("/api/vnccs/pose_sync/render_host", POSE_SYNC.render_host_status)],
+        )
 
     def test_upload_writes_the_backend_compatible_sync_file(self):
         payload = {

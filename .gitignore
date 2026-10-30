@@ -238,3 +238,5 @@ ModelLibrary
 /PromptLibrary/defaults/*
 !/PromptLibrary/defaults/*.json
 
+render_host/node_modules/
+render_host/package-lock.json

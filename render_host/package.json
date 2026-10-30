@@ -1,0 +1,12 @@
+{
+  "name": "vnccs-pose-render-host",
+  "private": true,
+  "type": "module",
+  "description": "Headless Pose Studio renderer for VNCCS_PoseStudio (no ComfyUI browser tab needed)",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.49.1"
+  }
+}

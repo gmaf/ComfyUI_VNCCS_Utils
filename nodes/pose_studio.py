@@ -14,6 +14,8 @@ import base64
 import math
 import re
 import uuid
+import urllib.error
+import urllib.request
 from fractions import Fraction
 from io import BytesIO
 import hashlib
@@ -236,6 +238,42 @@ def _pose_image_analysis_mode(data):
     return "manager_proportions"
 
 
+
+def _render_host_url():
+    """Pose Studio render host (render_host/server.mjs); empty means the browser tab renders."""
+    return os.environ.get("VNCCS_RENDER_HOST", "").strip().rstrip("/")
+
+
+def _request_frontend_render(event, payload, pose_data, timeout):
+    """Ask for captures: the render host when configured, otherwise the browser that queued the prompt.
+
+    Either way the captures arrive through /vnccs/pose_sync/upload_capture and are read by
+    _wait_for_frontend_sync. A host that is configured but unreachable falls back to the browser.
+    """
+    from server import PromptServer
+
+    host = _render_host_url()
+    if host:
+        body = json.dumps({"event": event, "detail": payload, "pose_data": pose_data or "{}"}).encode("utf-8")
+        request = urllib.request.Request(
+            f"{host}/render", data=body, headers={"Content-Type": "application/json"}, method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                result = json.loads(response.read().decode("utf-8") or "{}")
+            print(f"[VNCCS Pose Studio] Render host: {event} in {result.get('ms', '?')} ms")
+            return
+        except urllib.error.HTTPError as e:
+            try:
+                message = json.loads(e.read().decode("utf-8")).get("error") or str(e)
+            except Exception:
+                message = str(e)
+            raise RuntimeError(f"Pose Studio render host failed: {message}") from e
+        except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
+            print(f"[VNCCS Pose Studio] Render host {host} unavailable ({e}); asking the browser instead.")
+    PromptServer.instance.send_sync(event, payload, getattr(PromptServer.instance, "client_id", None))
+
+
 class VNCCS_PoseStudio:
     """Pose Studio with mesh editing and multiple pose generation."""
     
@@ -340,6 +378,7 @@ class VNCCS_PoseStudio:
         camera_prompt="",
         apply_mode="pose",
         image_size=None,
+        pose_data="{}",
     ):
         if pose_image is None:
             return None
@@ -347,7 +386,6 @@ class VNCCS_PoseStudio:
             raise RuntimeError("Pose image analysis requires an active browser widget.")
 
         try:
-            from server import PromptServer
             import time
             from ..vnccs_sam3d import process_image_to_pose_json, progress
 
@@ -374,10 +412,7 @@ class VNCCS_PoseStudio:
             }
             if image_size is not None:
                 event_payload["image_width"], event_payload["image_height"] = image_size
-            PromptServer.instance.send_sync(
-                "vnccs_apply_sam3d_pose", event_payload,
-                getattr(PromptServer.instance, "client_id", None),
-            )
+            _request_frontend_render("vnccs_apply_sam3d_pose", event_payload, pose_data, timeout=150.0)
             synced = self._wait_for_frontend_sync(
                 unique_id,
                 start_time,
@@ -436,6 +471,7 @@ class VNCCS_PoseStudio:
                     camera_prompt,
                     pose_image_analysis_mode,
                     image_size,
+                    pose_data,
                 )
                 if isinstance(synced, dict):
                     if synced.get("sync_error"):
@@ -450,21 +486,20 @@ class VNCCS_PoseStudio:
             if unique_id and not pose_image_synced:
                 sync_error_message = None
                 try:
-                    from server import PromptServer
                     import time
                     sync_token = uuid.uuid4().hex
                     start_time = time.time()
-                    PromptServer.instance.send_sync("vnccs_req_pose_sync", {
-                        "node_id": unique_id,
-                        "camera_prompt": camera_prompt or "",
-                        "sync_token": sync_token,
-                    }, getattr(PromptServer.instance, "client_id", None))
                     # Frontend scene readiness allows 120 seconds before capture.
                     sync_timeout = 150.0
                     if export_settings.get("editor_mode", export_settings.get("content_mode")) == "animation":
                         animation = data.get("animation") if isinstance(data.get("animation"), dict) else {}
                         frame_count = max(1, int(animation.get("frameCount", animation.get("frame_count", 1)) or 1))
                         sync_timeout = max(sync_timeout, 125.0 + frame_count * 0.25)
+                    _request_frontend_render("vnccs_req_pose_sync", {
+                        "node_id": unique_id,
+                        "camera_prompt": camera_prompt or "",
+                        "sync_token": sync_token,
+                    }, pose_data, timeout=sync_timeout)
                     synced = self._wait_for_frontend_sync(
                         unique_id,
                         start_time,

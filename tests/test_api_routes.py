@@ -58,6 +58,7 @@ def test_all_original_urls_methods_and_handler_registration_survive(tmp_path):
     assert sorted(handlers) == sorted([tuple(entry) for entry in expected] + [
         ("POST", "/vnccs/unicanvas_state_delete"),
         ("POST", "/api/vnccs/pose_sync/upload_capture"),
+        ("GET", "/api/vnccs/pose_sync/render_host"),
     ])
     assert all(inspect.iscoroutinefunction(handler) for handler in handlers.values())
 
