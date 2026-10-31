@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
+import { COMFY_HOST_PRELUDE, poseStudioSource } from "./helpers/pose_widget_source.mjs";
 
-const source = await fs.readFile(new URL("../web/vnccs_pose_studio.js", import.meta.url), "utf8");
-const widgetSource = source.slice(source.indexOf("class PoseStudioWidget {"),
-    source.indexOf("// === ComfyUI Extension Registration ==="));
-const syncSource = source.slice(source.indexOf("const waitForPoseStudioSyncIdle ="),
-    source.indexOf("\n    },\n\n    async beforeRegisterNodeDef", source.indexOf("const waitForPoseStudioSyncIdle =")));
+const source = poseStudioSource;
+const widgetSource = COMFY_HOST_PRELUDE + source.slice(source.indexOf("class PoseStudioWidget {"),
+    source.indexOf("// === End of PoseStudioWidget ==="));
+const nodeSource = await fs.readFile(new URL("../web/vnccs_pose_studio.js", import.meta.url), "utf8");
+const syncSource = nodeSource.slice(nodeSource.indexOf("const waitForPoseStudioSyncIdle ="),
+    nodeSource.indexOf("\n    },\n\n    async beforeRegisterNodeDef", nodeSource.indexOf("const waitForPoseStudioSyncIdle =")));
 
 function harness() {
     const handlers = new Map();

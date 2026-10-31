@@ -6,8 +6,9 @@ import * as animation from "../web/pose_studio/animation.mjs";
 import * as characters from "../web/pose_studio/characters.mjs";
 import * as THREE from "../web/vendor/three/three.module.js";
 import { PoseViewerCore as Core } from "../web/pose_studio/core.js";
+import { COMFY_HOST_PRELUDE, poseStudioSource } from "./helpers/pose_widget_source.mjs";
 
-const source = await fs.readFile(new URL("../web/vnccs_pose_studio.js", import.meta.url), "utf8");
+const source = poseStudioSource;
 const noop = () => {};
 const plain = value => JSON.parse(JSON.stringify(value));
 class Element {
@@ -24,8 +25,8 @@ function harness() {
         requestAnimationFrame: fn => { frames.set(++nextFrame, fn); return nextFrame; },
         cancelAnimationFrame: id => frames.delete(id), app: { graph: {} }, Blob, URL,
     };
-    const Widget = vm.runInNewContext(source.slice(source.indexOf("class PoseStudioWidget {"),
-        source.indexOf("// === ComfyUI Extension Registration ===")) + "\nPoseStudioWidget", context);
+    const Widget = vm.runInNewContext(COMFY_HOST_PRELUDE + source.slice(source.indexOf("class PoseStudioWidget {"),
+        source.indexOf("// === End of PoseStudioWidget ===")) + "\nPoseStudioWidget", context);
     return { Widget, Core, document, frames, context };
 }
 function animationWidget(Widget) {

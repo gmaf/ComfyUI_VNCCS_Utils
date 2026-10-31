@@ -1,5 +1,5 @@
 /** Pose Studio host contract and image preparation for UniCanvas pose layers. */
-import { PoseStudioWidget } from "../vnccs_pose_studio.js";
+import { PoseStudioWidget } from "../pose_studio/widget.mjs";
 
 import { installCustomSelects } from "../shared/custom_select.mjs";
 import { composePoseReference, poseAtPanoramaCamera, poseLayerBelow } from "./pose_state.mjs";

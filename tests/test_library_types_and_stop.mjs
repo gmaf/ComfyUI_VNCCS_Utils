@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { COMFY_HOST_PRELUDE, poseStudioSource } from "./helpers/pose_widget_source.mjs";
 
-const poseSource = readFileSync(new URL("../web/vnccs_pose_studio.js", import.meta.url), "utf8");
+const poseSource = poseStudioSource;
 const posePrototype = vm.runInNewContext(
-    poseSource.slice(poseSource.indexOf("class PoseStudioWidget {"), poseSource.indexOf("// === ComfyUI Extension Registration ===")) + "\nPoseStudioWidget.prototype",
+    COMFY_HOST_PRELUDE + poseSource.slice(poseSource.indexOf("class PoseStudioWidget {"), poseSource.indexOf("// === End of PoseStudioWidget ===")) + "\nPoseStudioWidget.prototype",
     { URLSearchParams },
 );
 

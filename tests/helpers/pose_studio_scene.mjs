@@ -9,8 +9,9 @@ import { HAND_PRESETS } from "../../web/pose_studio/hand_presets.js";
 import * as openpose from "../../web/pose_studio/imports/openpose.js";
 import { isLikelyVideoFile } from "../../web/pose_studio/imports/video.mjs";
 import { parseMorphPack, solveMorph, buildStaticModelData } from "../../web/pose_studio/morph_runtime.mjs";
+import { COMFY_HOST_PRELUDE, poseStudioSource } from "./pose_widget_source.mjs";
 
-const source = await fs.readFile(new URL("../../web/vnccs_pose_studio.js", import.meta.url), "utf8");
+const source = poseStudioSource;
 const raw = gunzipSync(await fs.readFile(new URL("../../web/pose_studio/assets/pose_studio_makehuman.v2.bin.gz", import.meta.url)));
 const pack = parseMorphPack(raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength));
 const noop = () => {};
@@ -61,7 +62,7 @@ export function createScene({ skinned = false } = {}) {
     };
     context.api = { fetchApi: (...args) => context.fetch(...args) };
     const constants = source.slice(source.indexOf("const DEFAULT_POSE_STUDIO_MESH_PROPORTIONS"), source.indexOf("function getVNCCSSharedMorphWorker"));
-    const Widget = vm.runInNewContext(constants + source.slice(source.indexOf("class PoseStudioWidget {"), source.indexOf("// === ComfyUI Extension Registration ===")) + "\nPoseStudioWidget", context);
+    const Widget = vm.runInNewContext(COMFY_HOST_PRELUDE + constants + source.slice(source.indexOf("class PoseStudioWidget {"), source.indexOf("// === End of PoseStudioWidget ===")) + "\nPoseStudioWidget", context);
     Widget.prototype.createUI = noop;
     const node = { id: 1, widgets: [{ name: "pose_data", value: "{}" }] };
     const w = new Widget(node);

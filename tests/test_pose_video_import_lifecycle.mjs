@@ -5,6 +5,7 @@ import vm from "node:vm";
 import { createScene, Element } from "./helpers/pose_studio_scene.mjs";
 import { createPoseStudioCharacter } from "../web/pose_studio/characters.mjs";
 import * as videoImports from "../web/pose_studio/imports/video.mjs";
+import { poseStudioSource } from "./helpers/pose_widget_source.mjs";
 
 const noop = () => {};
 const settle = async () => { for (let index = 0; index < 12; index++) await Promise.resolve(); };
@@ -130,7 +131,7 @@ test("workflow restoration closes the previous video modal", () => {
     assert.equal(closed, 1);
 });
 
-const source = await fs.readFile(new URL("../web/vnccs_pose_studio.js", import.meta.url), "utf8");
+const source = poseStudioSource;
 for (const handle of ["playhead", "in", "out"]) {
     test(`video ${handle} stops at the latest preview after pointer capture is lost`, () => {
         const start = source.indexOf("        let dragging = null;", source.indexOf("async showVideoImportModal("));

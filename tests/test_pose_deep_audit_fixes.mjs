@@ -5,8 +5,9 @@ import vm from "node:vm";
 import { createScene, Element } from "./helpers/pose_studio_scene.mjs";
 import { createDefaultAnimationState, setTrackKeyframeFromEuler } from "../web/pose_studio/animation.mjs";
 import { createPoseStudioCharacter } from "../web/pose_studio/characters.mjs";
+import { poseStudioSource } from "./helpers/pose_widget_source.mjs";
 
-const source = await fs.readFile(new URL("../web/vnccs_pose_studio.js", import.meta.url), "utf8");
+const source = poseStudioSource;
 const core = await fs.readFile(new URL("../web/pose_studio/core.js", import.meta.url), "utf8");
 const noop = () => {};
 

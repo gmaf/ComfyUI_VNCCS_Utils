@@ -4,8 +4,9 @@ import test from "node:test";
 import vm from "node:vm";
 import * as animation from "../web/pose_studio/animation.mjs";
 import { createScene } from "./helpers/pose_studio_scene.mjs";
+import { COMFY_HOST_PRELUDE, poseStudioSource } from "./helpers/pose_widget_source.mjs";
 
-const source = await fs.readFile(new URL("../web/vnccs_pose_studio.js", import.meta.url), "utf8");
+const source = poseStudioSource;
 const noop = () => {};
 
 function editor(t) {
@@ -48,8 +49,8 @@ function editor(t) {
         _refreshVisibleSelection() {}
         _scheduleKeyLaneDraw() {}
     }
-    const Widget = vm.runInNewContext(source.slice(source.indexOf("class PoseStudioWidget {"),
-        source.indexOf("// === ComfyUI Extension Registration ===")) + "\nPoseStudioWidget", {
+    const Widget = vm.runInNewContext(COMFY_HOST_PRELUDE + source.slice(source.indexOf("class PoseStudioWidget {"),
+        source.indexOf("// === End of PoseStudioWidget ===")) + "\nPoseStudioWidget", {
         ...animation, PoseAnimationTimeline: Timeline, document, console,
     });
     const state = animation.createDefaultAnimationState({ bones: { head: [0, 0, 0] } });

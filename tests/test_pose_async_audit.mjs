@@ -4,9 +4,10 @@ import test from "node:test";
 import vm from "node:vm";
 import { createScene } from "./helpers/pose_studio_scene.mjs";
 import { createPoseStudioCharacter } from "../web/pose_studio/characters.mjs";
+import { poseStudioSource } from "./helpers/pose_widget_source.mjs";
 
 const noop = () => {};
-const source = await fs.readFile(new URL("../web/vnccs_pose_studio.js", import.meta.url), "utf8");
+const source = poseStudioSource;
 const settle = async () => { for (let index = 0; index < 12; index++) await Promise.resolve(); };
 
 for (const outcome of ["network error", "HTTP error", "empty response", "invalid pose", "invalid animation", "invalid framing"]) {

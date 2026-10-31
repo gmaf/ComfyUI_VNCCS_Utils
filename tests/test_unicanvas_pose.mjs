@@ -6,6 +6,7 @@ import * as THREE from "../web/vendor/three/three.module.js";
 import { POSE_HELP_CSS, buildPoseHelp } from "../web/unicanvas/pose_help.mjs";
 import * as state from "../web/unicanvas/pose_state.mjs";
 import { createScene } from "./helpers/pose_studio_scene.mjs";
+import { poseStudioSource } from "./helpers/pose_widget_source.mjs";
 
 const noop = () => {};
 class Element {
@@ -734,7 +735,7 @@ test("captures run on the persisted framing; existing layers keep their saved fr
 });
 
 test("the shared studio mounts the hand popover into an embedded host when one is set", async () => {
-    const psSource = fs.readFileSync(new URL("../web/vnccs_pose_studio.js", import.meta.url), "utf8");
+    const psSource = poseStudioSource;
     assert.match(psSource, /_handPopoverHost\(\) \{\s*return this\.handPopoverHost \|\| this\.centerPanel \|\| this\.canvasContainer;/,
         "standalone keeps the center panel, an embedded host overrides it");
     assert.match(psSource, /this\._handPopoverHost\(\)\.appendChild\(panel\)/);

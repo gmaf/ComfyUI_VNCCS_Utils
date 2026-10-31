@@ -7,8 +7,9 @@ import {
     createAnimationCacheReference, createDefaultAnimationState,
     evaluateAnimationFrame, setTrackKeyframeFromEuler,
 } from "../web/pose_studio/animation.mjs";
+import { poseStudioSource } from "./helpers/pose_widget_source.mjs";
 
-const source = await fs.readFile(new URL("../web/vnccs_pose_studio.js", import.meta.url), "utf8");
+const source = poseStudioSource;
 const noop = () => {};
 const angle = state => evaluateAnimationFrame(state, 0).bones.head[0];
 function animation(degrees) {

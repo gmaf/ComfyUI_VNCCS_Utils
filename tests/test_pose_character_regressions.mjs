@@ -1,12 +1,8 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { poseStudioSource } from "./helpers/pose_widget_source.mjs";
 
-
-const poseStudioSource = await readFile(
-    new URL("../web/vnccs_pose_studio.js", import.meta.url),
-    "utf8",
-);
 const poseStudioCoreSource = await readFile(
     new URL("../web/pose_studio/core.js", import.meta.url),
     "utf8",
@@ -24,11 +20,11 @@ const methodSource = (source, signature, nextSignature) => {
 test("Pose Studio imports one strict version of its transform-track modules", () => {
     assert.match(
         poseStudioSource,
-        /from "\.\/pose_studio\/animation\.mjs\?v=[^"]+"/,
+        /from "\.\/animation\.mjs\?v=[^"]+"/,
     );
     assert.match(
         poseStudioSource,
-        /from "\.\/pose_studio\/characters\.mjs\?v=[^"]+"/,
+        /from "\.\/characters\.mjs\?v=[^"]+"/,
     );
     assert.doesNotMatch(
         poseStudioSource,

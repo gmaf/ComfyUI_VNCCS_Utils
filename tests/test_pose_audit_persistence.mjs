@@ -4,9 +4,10 @@ import test from "node:test";
 import vm from "node:vm";
 import { createScene, Element } from "./helpers/pose_studio_scene.mjs";
 import { createDefaultAnimationState } from "../web/pose_studio/animation.mjs";
+import { poseStudioSource } from "./helpers/pose_widget_source.mjs";
 
 const noop = () => {};
-const source = await fs.readFile(new URL("../web/vnccs_pose_studio.js", import.meta.url), "utf8");
+const source = poseStudioSource;
 function restoreScene() {
     const scene = createScene();
     scene.w.hydrateCharacterSceneModels = async () => {};
