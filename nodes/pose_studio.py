@@ -14,14 +14,15 @@ import base64
 import math
 import re
 import uuid
-import urllib.error
-import urllib.request
 from fractions import Fraction
 from io import BytesIO
 import hashlib
 import torch
 import numpy as np
 from PIL import Image
+
+from . import render_host_jobs
+
 _CAPTURED_IMAGE_MAX_COUNT = 600
 _CAPTURED_IMAGE_MAX_TOTAL_CHARS = 64 * 1024 * 1024
 _CAPTURED_IMAGE_MAX_BYTES = 32 * 1024 * 1024
@@ -239,38 +240,18 @@ def _pose_image_analysis_mode(data):
 
 
 
-def _render_host_url():
-    """Pose Studio render host (render_host/server.mjs); empty means the browser tab renders."""
-    return os.environ.get("VNCCS_RENDER_HOST", "").strip().rstrip("/")
-
-
 def _request_frontend_render(event, payload, pose_data, timeout):
-    """Ask for captures: the render host when configured, otherwise the browser that queued the prompt.
+    """Ask for captures: the render host when it is attached, otherwise the browser that queued the prompt.
 
+    The render host (render_host/server.mjs) polls ComfyUI for these jobs (nodes/render_host_jobs.py).
     Either way the captures arrive through /vnccs/pose_sync/upload_capture and are read by
-    _wait_for_frontend_sync. A host that is configured but unreachable falls back to the browser.
+    _wait_for_frontend_sync.
     """
     from server import PromptServer
 
-    host = _render_host_url()
-    if host:
-        body = json.dumps({"event": event, "detail": payload, "pose_data": pose_data or "{}"}).encode("utf-8")
-        request = urllib.request.Request(
-            f"{host}/render", data=body, headers={"Content-Type": "application/json"}, method="POST",
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
-                result = json.loads(response.read().decode("utf-8") or "{}")
-            print(f"[VNCCS Pose Studio] Render host: {event} in {result.get('ms', '?')} ms")
-            return
-        except urllib.error.HTTPError as e:
-            try:
-                message = json.loads(e.read().decode("utf-8")).get("error") or str(e)
-            except Exception:
-                message = str(e)
-            raise RuntimeError(f"Pose Studio render host failed: {message}") from e
-        except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
-            print(f"[VNCCS Pose Studio] Render host {host} unavailable ({e}); asking the browser instead.")
+    if render_host_jobs.attached():
+        render_host_jobs.submit(event, payload, pose_data, timeout)
+        return
     PromptServer.instance.send_sync(event, payload, getattr(PromptServer.instance, "client_id", None))
 
 
@@ -357,6 +338,9 @@ class VNCCS_PoseStudio:
         filepath = os.path.join(temp_dir, f"vnccs_debug_{file_id}.json")
 
         while time.time() - start_time < timeout:
+            host_error = render_host_jobs.take_error(sync_token)
+            if host_error:
+                return {"sync_error": f"Pose Studio render host failed: {host_error}"}
             if os.path.exists(filepath) and os.path.getmtime(filepath) > start_time - 1.0:
                 try:
                     with open(filepath, "r", encoding="utf-8") as f:

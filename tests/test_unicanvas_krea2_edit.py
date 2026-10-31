@@ -296,7 +296,18 @@ class EditTensorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "source image"):
             encoder.encode(clip, "edit")
 
+    def comfy_vae_encode(self):
+        """ComfyUI's VAEEncode node, which _fit_encode_image calls through comfy_bridge."""
+        class VAEEncode:
+            FUNCTION = "encode"
+
+            def encode(self, vae, pixels):
+                return ({"samples": vae.encode(pixels)},)
+
+        return patch.dict(sys.modules, {"nodes": types.SimpleNamespace(NODE_CLASS_MAPPINGS={"VAEEncode": VAEEncode})})
+
     def test_fit_uses_pixels_preserves_aspect_and_cache(self):
+        self.enterContext(self.comfy_vae_encode())
         vae = Mock()
         vae.encode.side_effect = lambda pixels: torch.zeros(1, 16, pixels.shape[1] // 8, pixels.shape[2] // 8)
         cache = {}
@@ -309,6 +320,7 @@ class EditTensorTests(unittest.TestCase):
         self.assertEqual(positions[0, 0].tolist(), [1, .5, 0])
 
     def test_wrapper_encodes_once_before_sampling_and_handles_native_signatures(self):
+        self.enterContext(self.comfy_vae_encode())
         dm = types.SimpleNamespace(**dict.fromkeys(("patch", "channels", "_unpack_context", "first", "txtfusion", "txtmlp", "tmlp", "tproj", "tdim", "pe_embedder", "blocks", "last")))
         original = Mock()
         original.model.diffusion_model = dm

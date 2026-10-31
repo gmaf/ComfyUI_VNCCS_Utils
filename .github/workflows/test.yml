@@ -28,4 +28,4 @@ jobs:
         with:
           node-version: "20"
       - name: Run JavaScript tests
-        run: node --test tests/*.mjs
+        run: node --experimental-vm-modules --test tests/*.mjs

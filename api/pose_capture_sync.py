@@ -75,29 +75,48 @@ async def upload_pose_sync(request):
 
 
 async def render_host_status(request):
-    """Whether Pose Studio renders on the server (render_host/server.mjs) or needs a browser tab."""
+    """Whether Pose Studio renders on the server (render_host/server.mjs polls for jobs) or needs a browser tab."""
+    from ..nodes import render_host_jobs
+
+    return web.json_response(render_host_jobs.status())
+
+
+async def render_host_poll(request):
+    """Long poll of the render host: the next capture request, or none after 20 s. Polling marks it attached."""
     import asyncio
-    import urllib.request
-
-    host = os.environ.get("VNCCS_RENDER_HOST", "").strip().rstrip("/")
-    if not host:
-        return web.json_response({"configured": False, "ok": False})
-
-    def probe():
-        with urllib.request.urlopen(f"{host}/health", timeout=10) as response:
-            return json.loads(response.read().decode("utf-8") or "{}")
+    from ..nodes import render_host_jobs
 
     try:
-        health = await asyncio.get_running_loop().run_in_executor(None, probe)
-        return web.json_response({"configured": True, "ok": bool(health.get("ok")), "chromium": health.get("chromium"), "webgl": health.get("webgl")})
-    except Exception as e:
-        return web.json_response({"configured": True, "ok": False, "error": str(e)})
+        info = await request.json()
+    except (ValueError, TypeError):
+        info = {}
+    render_host_jobs.seen(info)
+    job = await asyncio.get_running_loop().run_in_executor(None, render_host_jobs.next_job, 20.0)
+    render_host_jobs.seen(info)
+    return web.json_response({"job": job})
+
+
+async def render_host_result(request):
+    """The render host reports a job it could not render; the waiting node fails with the message."""
+    from ..nodes import render_host_jobs
+
+    try:
+        data = await request.json()
+    except (ValueError, TypeError):
+        return web.json_response({"error": "Invalid JSON"}, status=400)
+    if not isinstance(data, dict):
+        return web.json_response({"error": "Request must be an object"}, status=400)
+    if not data.get("ok"):
+        render_host_jobs.report(data.get("sync_token"), data.get("error") or "render failed")
+    return web.json_response({"status": "ok"})
 
 
 def register_routes(app):
     """Register Pose Studio runtime synchronization routes."""
     app.router.add_get("/vnccs/pose_sync/render_host", render_host_status)
     app.router.add_get("/api/vnccs/pose_sync/render_host", render_host_status)
+    app.router.add_post("/vnccs/pose_sync/render_host/poll", render_host_poll)
+    app.router.add_post("/vnccs/pose_sync/render_host/result", render_host_result)
     app.router.add_post("/vnccs/pose_sync/upload_capture", upload_pose_sync)
     app.router.add_post("/api/vnccs/pose_sync/upload_capture", upload_pose_sync)
     app.router.add_post("/vnccs/debug/upload_capture", upload_pose_sync)

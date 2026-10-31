@@ -7,11 +7,14 @@ scripts, VNCCS Studio).
 
 - Start: `npm install && COMFY_URL=http://127.0.0.1:8188 node server.mjs` (port 8190), or the
   `mcr.microsoft.com/playwright:v1.49.1-noble` image with `/node_modules/playwright` installed.
-- ComfyUI: set `VNCCS_RENDER_HOST=http://<host>:8190`. The node then POSTs its sync request
-  (`vnccs_req_pose_sync` / `vnccs_apply_sam3d_pose`) with its `pose_data` to `/render`; the widget
-  uploads captures to `/vnccs/pose_sync/upload_capture` as in the browser. If the host is
-  unreachable the node falls back to the browser tab.
-- `GET /vnccs/pose_sync/render_host` on ComfyUI reports whether the host is configured and healthy.
+- The host connects to ComfyUI (`COMFY_URL`) like a browser tab: it long-polls
+  `POST /vnccs/pose_sync/render_host/poll` for the node's sync request (`vnccs_req_pose_sync` /
+  `vnccs_apply_sam3d_pose`) with its `pose_data`; the widget uploads captures to
+  `/vnccs/pose_sync/upload_capture` as in the browser, and a failed render is reported to
+  `/vnccs/pose_sync/render_host/result`. ComfyUI needs no setting and never calls the host (the
+  security scan forbids network clients and environment access in node code). While no host has
+  polled for 60 s the node asks the browser tab instead.
+- `GET /vnccs/pose_sync/render_host` on ComfyUI reports whether a host is attached and its browser.
 - `POST /render` with `"dry_run": true` returns the captures in the response instead of uploading them.
 
 WebGL: with `CHROMIUM_ARGS="--use-gl=angle --use-angle=gl-egl"`, `--gpus all`,

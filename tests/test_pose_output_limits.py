@@ -142,26 +142,15 @@ class PoseOutputLimitTests(unittest.TestCase):
             self.assertEqual(payload["node_id"], "91:703")
             self.assertTrue(payload["sync_token"])
 
-    def test_render_host_receives_sync_requests_with_pose_data(self):
-        import http.server
-        import threading
+    def _detach_render_host(self):
+        jobs = POSE_STUDIO.render_host_jobs
+        jobs._host.update(seen=0.0, chromium=None, webgl=None)
+        while jobs.next_job(0.01):
+            pass
 
-        received = []
-
-        class Handler(http.server.BaseHTTPRequestHandler):
-            def do_POST(self):
-                received.append((self.path, json.loads(self.rfile.read(int(self.headers["Content-Length"])))))
-                body = b'{"ok": true, "ms": 5}'
-                self.send_response(200)
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-
-            def log_message(self, *_args):
-                pass
-
-        httpd = http.server.HTTPServer(("127.0.0.1", 0), Handler)
-        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    def test_attached_render_host_gets_sync_requests_with_pose_data(self):
+        """The render host polls ComfyUI for jobs; ComfyUI never calls it."""
+        jobs = POSE_STUDIO.render_host_jobs
         events = []
         server = types.SimpleNamespace(PromptServer=types.SimpleNamespace(
             instance=types.SimpleNamespace(client_id="browser",
@@ -169,33 +158,54 @@ class PoseOutputLimitTests(unittest.TestCase):
         node = POSE_STUDIO.VNCCS_PoseStudio()
         node._wait_for_frontend_sync = lambda *_args, **_kwargs: {"sync_error": "stop here"}
         pose_data = json.dumps({"poses": [{"prompt": "a"}]})
-        try:
-            with patch.dict(sys.modules, {"server": server}), \
-                    patch.dict("os.environ", {"VNCCS_RENDER_HOST": f"http://127.0.0.1:{httpd.server_port}/"}):
-                with self.assertRaisesRegex(RuntimeError, "stop here"):
-                    node.generate(pose_data, unique_id="12")
-        finally:
-            httpd.shutdown()
+        self.addCleanup(self._detach_render_host)
+        jobs.seen({"chromium": "131", "webgl": "GB10"})
+        self.assertEqual(jobs.status()["webgl"], "GB10")
+        with patch.dict(sys.modules, {"server": server}):
+            with self.assertRaisesRegex(RuntimeError, "stop here"):
+                node.generate(pose_data, unique_id="12")
         self.assertEqual(events, [])
-        path, body = received[0]
-        self.assertEqual(path, "/render")
-        self.assertEqual(body["event"], "vnccs_req_pose_sync")
-        self.assertEqual(body["pose_data"], pose_data)
-        self.assertEqual(body["detail"]["node_id"], "12")
-        self.assertTrue(body["detail"]["sync_token"])
+        job = jobs.next_job(1)
+        self.assertEqual(job["event"], "vnccs_req_pose_sync")
+        self.assertEqual(job["pose_data"], pose_data)
+        self.assertEqual(job["detail"]["node_id"], "12")
+        self.assertTrue(job["detail"]["sync_token"])
+        self.assertIsNone(jobs.next_job(0.01))
 
-    def test_unreachable_render_host_falls_back_to_browser(self):
+    def test_without_render_host_requests_go_to_the_browser(self):
+        self._detach_render_host()
+        self.assertFalse(POSE_STUDIO.render_host_jobs.status()["ok"])
         events = []
         server = types.SimpleNamespace(PromptServer=types.SimpleNamespace(
             instance=types.SimpleNamespace(client_id="browser",
                 send_sync=lambda event, payload, sid=None: events.append((event, sid)))))
         node = POSE_STUDIO.VNCCS_PoseStudio()
         node._wait_for_frontend_sync = lambda *_args, **_kwargs: {"sync_error": "stop here"}
-        with patch.dict(sys.modules, {"server": server}), \
-                patch.dict("os.environ", {"VNCCS_RENDER_HOST": "http://127.0.0.1:9"}):
+        with patch.dict(sys.modules, {"server": server}):
             with self.assertRaisesRegex(RuntimeError, "stop here"):
                 node.generate("{}", unique_id="12")
         self.assertEqual(events, [("vnccs_req_pose_sync", "browser")])
+        self.assertIsNone(POSE_STUDIO.render_host_jobs.next_job(0.01))
+
+    def test_render_host_failure_ends_the_wait_with_its_message(self):
+        jobs = POSE_STUDIO.render_host_jobs
+        node = POSE_STUDIO.VNCCS_PoseStudio()
+        with tempfile.TemporaryDirectory() as root:
+            folder_paths = types.SimpleNamespace(get_temp_directory=lambda: root)
+            jobs.report("token-1", "WebGL context lost")
+            with patch.dict(sys.modules, {"folder_paths": folder_paths}):
+                started = time.time()
+                result = node._wait_for_frontend_sync("12", started, timeout=5, sync_token="token-1")
+        self.assertEqual(result, {"sync_error": "Pose Studio render host failed: WebGL context lost"})
+        self.assertLess(time.time() - started, 2)
+        self.assertIsNone(jobs.take_error("token-1"))
+
+    def test_expired_render_host_jobs_are_dropped(self):
+        jobs = POSE_STUDIO.render_host_jobs
+        self.addCleanup(self._detach_render_host)
+        jobs.submit("vnccs_req_pose_sync", {"node_id": "1", "sync_token": "old"}, "{}", timeout=-1)
+        jobs.submit("vnccs_req_pose_sync", {"node_id": "2", "sync_token": "new"}, "{}", timeout=60)
+        self.assertEqual(jobs.next_job(1)["detail"]["sync_token"], "new")
 
     def test_sparse_animation_export_preserves_imported_duration(self):
         fps = POSE_STUDIO._animation_frame_rate({"animation": {"fps": 600 / 7200}})

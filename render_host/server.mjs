@@ -1,12 +1,15 @@
 // Pose Studio render host: runs the production Pose Studio widget in headless Chromium next to
 // ComfyUI, so VNCCS_PoseStudio executes without a ComfyUI browser tab.
 //
-// The node POSTs the event it would have sent to the browser (vnccs_req_pose_sync or
-// vnccs_apply_sam3d_pose) together with its pose_data to /render. The host opens a page on the
-// ComfyUI origin, mounts one Pose Studio node with that pose_data and emits the event; the widget
-// renders and uploads its captures to /vnccs/pose_sync/upload_capture exactly as in the browser,
-// where the waiting node picks them up. Only ComfyUI's app.js and api.js are replaced by stubs
-// (the same approach as tests/browser/pose_studio_readiness.mjs).
+// The host connects to ComfyUI like a browser tab: it long-polls /vnccs/pose_sync/render_host/poll
+// for the event the node would have sent to the browser (vnccs_req_pose_sync or
+// vnccs_apply_sam3d_pose) with its pose_data, opens a page on the ComfyUI origin, mounts one Pose
+// Studio node with that pose_data and emits the event; the widget renders and uploads its captures
+// to /vnccs/pose_sync/upload_capture exactly as in the browser, where the waiting node picks them
+// up. A failed render is reported to /vnccs/pose_sync/render_host/result. ComfyUI never calls the
+// host. Only ComfyUI's app.js and api.js are replaced by stubs (the same approach as
+// tests/browser/pose_studio_readiness.mjs). POST /render on the host itself still renders one
+// request directly (with "dry_run": true the captures come back in the response).
 //
 // Env: COMFY_URL (default http://127.0.0.1:8188), PORT (8190), HOST (0.0.0.0),
 //      CHROMIUM_ARGS (extra flags), RENDER_TIMEOUT_MS (240000).
@@ -179,6 +182,46 @@ function readJson(req, limit = 64 * 1024 * 1024) {
   });
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function renderWithTimeout(job) {
+  return serialized(() =>
+    Promise.race([
+      render(job),
+      new Promise((_, reject) => setTimeout(() => reject(new Error(`Render timed out after ${TIMEOUT} ms`)), TIMEOUT)),
+    ]),
+  );
+}
+
+async function postComfy(path, body) {
+  const res = await fetch(`${COMFY}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!res.ok) throw new Error(`${path}: HTTP ${res.status}`);
+  return res.json();
+}
+
+// Ask ComfyUI for capture requests; each poll waits up to 20 s and keeps the host "attached".
+async function pollComfy() {
+  for (;;) {
+    try {
+      const b = await browser();
+      const { job } = await postComfy("/vnccs/pose_sync/render_host/poll", { chromium: b.version(), webgl: await webglRenderer(b) });
+      if (!job) continue;
+      const token = job.detail?.sync_token;
+      try {
+        if (!EVENTS.has(job.event)) throw new Error(`Unknown event ${job.event}`);
+        const result = await renderWithTimeout(job);
+        console.log(`[render-host] ${job.event} node ${job.detail?.node_id}: ${result.ms} ms${result.errors.length ? `, page errors: ${result.errors.length}` : ""}`);
+      } catch (e) {
+        console.error("[render-host]", e);
+        await postComfy("/vnccs/pose_sync/render_host/result", { sync_token: token, ok: false, error: String(e?.message || e) }).catch(() => {});
+      }
+    } catch (e) {
+      console.error(`[render-host] ComfyUI ${COMFY} unavailable: ${e?.message || e}`);
+      await sleep(3000);
+    }
+  }
+}
+
 const send = (res, status, body) => res.writeHead(status, { "Content-Type": "application/json" }).end(JSON.stringify(body));
 
 createServer(async (req, res) => {
@@ -192,12 +235,7 @@ createServer(async (req, res) => {
       if (!EVENTS.has(body?.event)) return send(res, 400, { error: `Unknown event ${body?.event}` });
       if (!body.detail?.node_id || !body.detail?.sync_token) return send(res, 400, { error: "detail.node_id and detail.sync_token are required" });
       if (typeof body.pose_data !== "string") return send(res, 400, { error: "pose_data must be the node's pose_data string" });
-      const result = await serialized(() =>
-        Promise.race([
-          render(body),
-          new Promise((_, reject) => setTimeout(() => reject(new Error(`Render timed out after ${TIMEOUT} ms`)), TIMEOUT)),
-        ]),
-      );
+      const result = await renderWithTimeout(body);
       console.log(`[render-host] ${body.event} node ${body.detail.node_id}: ${result.ms} ms${result.errors.length ? `, page errors: ${result.errors.length}` : ""}`);
       return send(res, 200, result);
     }
@@ -207,3 +245,5 @@ createServer(async (req, res) => {
     send(res, 500, { error: String(e?.message || e) });
   }
 }).listen(PORT, HOST, () => console.log(`[render-host] listening on ${HOST}:${PORT}, ComfyUI ${COMFY}`));
+
+pollComfy();

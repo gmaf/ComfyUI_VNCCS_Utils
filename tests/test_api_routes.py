@@ -59,6 +59,8 @@ def test_all_original_urls_methods_and_handler_registration_survive(tmp_path):
         ("POST", "/vnccs/unicanvas_state_delete"),
         ("POST", "/api/vnccs/pose_sync/upload_capture"),
         ("GET", "/api/vnccs/pose_sync/render_host"),
+        ("POST", "/vnccs/pose_sync/render_host/poll"),
+        ("POST", "/vnccs/pose_sync/render_host/result"),
     ])
     assert all(inspect.iscoroutinefunction(handler) for handler in handlers.values())
 
